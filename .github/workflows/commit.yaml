@@ -1,0 +1,206 @@
+name: Test
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:  # ignore docs as they are built with Netlify.
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
+  push:
+    branches: [main]
+    paths-ignore:  # ignore docs as they are built with Netlify.
+      - '**/*.md'
+      - 'site/**'
+      - 'netlify.toml'
+
+env:  # Update this prior to requiring a higher minor version in go.mod
+  GO_VERSION: "1.17"  # 1.xx == latest patch of 1.xx
+
+defaults:
+  run:  # use bash for all operating systems unless overridden
+    shell: bash
+
+jobs:
+  check:
+    name: Pre-commit check, Go-${{ matrix.go-version }}
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:  # use latest available versions and be consistent on all workflows!
+        go-version:
+        - "1.17" # == ${{ env.GO_VERSION }} because matrix cannot expand env variables
+        - "1.19.0-rc.2" # TODO: use 1.19.0 after the release.
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Install latest wast2json
+        run: |  # Needed for build.spectest. wabt includes wast2json.
+          wabt_version=1.0.29
+          wabt_url=https://github.com/WebAssembly/wabt/releases/download/${wabt_version}/wabt-${wabt_version}-ubuntu.tar.gz
+          curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wast2json
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: check-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum', 'Makefile') }}
+
+      - run: make check
+
+      - run: make build.spectest
+
+  test_amd64:
+    name: amd64, ${{ matrix.os }}, Go-${{ matrix.go-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false  # don't fail fast as sometimes failures are arch/OS specific
+      matrix:  # use latest available versions and be consistent on all workflows!
+        os: [ubuntu-20.04, macos-12, windows-2022]
+        go-version:
+        - "1.17" # == ${{ env.GO_VERSION }} because matrix cannot expand env variables
+        - "1.19.0-rc.2" # TODO: use 1.19.0 after the release.
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: test-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+
+      - run: make test
+
+      - name: "Generate coverage report"  # only once (not per OS)
+        if: runner.os == 'Linux'
+        run: make coverage
+
+      - name: "Upload coverage report"  # only on main push and only once (not per OS)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && runner.os == 'Linux'
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: bash <(curl -s https://codecov.io/bash)
+
+  test_freebsd:  # See /Vagrantfile for notes
+    name: amd64, FreeBSD, Go-${{ matrix.go-version }}
+    runs-on: macos-12
+    strategy:
+      fail-fast: false  # don't fail fast as sometimes failures are arch/OS specific
+      matrix:
+        go-version:
+          - "1.17" # == ${{ env.GO_VERSION }} because matrix cannot expand env variables
+          - "1.19.0-rc.2" # TODO: use 1.19.0 after the release.
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:  # Note: This isn't really used, it is just to match versions.
+          go-version: ${{ matrix.go-version }}
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: ~/.vagrant.d/boxes
+          key: spectest-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum','Vagrantfile') }}-${{ matrix.spec-version }}
+
+      - name: Install Vagrant
+        run: brew install --cask vagrant
+
+      - name: Configure Vagrant
+        run: |  # This ensures the same version of Go is used inside Vagrant.
+          GOVERSION=$(go env GOVERSION) GOARCH=$(go env GOARCH) vagrant up
+
+      - name: make test
+        run: vagrant ssh -c "cd wazero && make test"
+
+  test_scratch:
+    name: ${{ matrix.arch }}, Linux (scratch), Go-${{ matrix.go-version }}
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false  # don't fail fast as sometimes failures are arch/OS specific
+      matrix:
+        go-version:
+        - "1.17"  # == ${{ env.GO_VERSION }} because matrix cannot expand env variables
+        - "1.19.0-rc.2" # TODO: use 1.19.0 after the release.
+        arch:
+        - "amd64"
+        - "arm64"
+        - "riscv64"
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: test-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}-${{ matrix.arch }}
+
+      - name: Build test binaries
+        # Exclude benchmarks as we don't run those in Docker
+        run: go list -f '{{.Dir}}' ./... | egrep -v '(bench|vs|spectest)' | xargs -Ipkg go test pkg -c -o pkg.test
+        env:
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+
+      - name: Set up QEMU
+        if: ${{ matrix.arch != 'amd64' }}
+        uses: docker/setup-qemu-action@v2
+        with:  # Avoid docker.io rate-limits; built with internal-images.yml
+          image: ghcr.io/tetratelabs/wazero-internal:binfmt
+          platforms: ${{ matrix.arch }}
+
+      - name: Build scratch container
+        run: |
+          echo 'FROM scratch' >> Dockerfile
+          echo 'CMD ["/test"]' >> Dockerfile
+          docker buildx build -t wazero:test --platform linux/${{ matrix.arch }} .
+
+      - name: Run built test binaries
+        # This runs all tests compiled above in sequence. Note: This mounts /tmp to allow t.TempDir() in tests.
+        run: find . -name "*.test" | xargs -Itestbin docker run --platform linux/${{ matrix.arch }} -v $(pwd)/testbin:/test --tmpfs /tmp --rm -t wazero:test
+
+  bench:
+    name: Benchmark
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # Unlike the other CGO libraries, WasmEdge requires offline installation.
+      - name: Install WasmEdge
+        run: |
+          wget -qO- https://raw.githubusercontent.com/WasmEdge/WasmEdge/master/utils/install.sh | sudo bash -s -- -p /usr/local -e none -v ${WASMEDGE_VERSION}
+        # The version here is coupled to internal/integration_test/go.mod, but it
+        # isn't always the same as sometimes the Go layer has a broken release.
+        env:
+          WASMEDGE_VERSION: 0.9.1
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: bench-${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - run: make bench.check

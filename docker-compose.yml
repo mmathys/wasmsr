@@ -1,0 +1,11 @@
+services:
+  host1:
+    container_name: host-1
+    image: snapshot:latest
+    command: "./snapshot -port 50051 -peer 50052 -quiet -trap -snapshotS 10 -no-indent -send"
+    network_mode: "host"
+  host2:
+    container_name: host-2
+    image: snapshot:latest
+    command: "./snapshot -port 50052 -peer 50051 -quiet -trap -snapshotS 10 -no-indent"
+    network_mode: "host"

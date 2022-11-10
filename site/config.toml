@@ -1,0 +1,48 @@
+baseURL = "https://wazero.io/"
+languageCode = "en-us"
+defaultContentLanguage = "en"
+title = "wazero"
+theme = "hello-friend"
+googleAnalytics = "G-LG7LD9G4ZB"
+
+[params]
+  defaultTheme = "light"
+  showReadingTime = false
+
+[languages]
+  [languages.en]
+    # Note: We override the logo via layouts/partials/logo.html
+    [languages.en.menu]
+      [[languages.en.menu.main]]
+        url = "https://pkg.go.dev/github.com/tetratelabs/wazero"
+        name = "API"
+        weight = 1
+      [[languages.en.menu.main]]
+        url = "https://github.com/tetratelabs/wazero/blob/main/examples"
+        name = "Examples"
+        weight = 2
+      [[languages.en.menu.main]]
+        identifier = "community"
+        name = "Community"
+        weight = 3
+        [[languages.en.menu.main]]
+          parent = "community"
+          url = "https://github.com/tetratelabs/wazero"
+          name = "GitHub"
+          weight = 1
+        [[languages.en.menu.main]]
+          parent = "community"
+          url = "/history/"
+          identifier = "history"
+          name = "History"
+          weight = 2
+      [[languages.en.menu.main]]
+        identifier = "appendix"
+        name = "Appendix"
+        weight = 4
+        [[languages.en.menu.main]]
+          parent = "appendix"
+          url = "/specs/"
+          identifier = "specs"
+          name = "Specifications"
+          weight = 1

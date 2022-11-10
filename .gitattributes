@@ -1,0 +1,4 @@
+# Improves experience of commands like `make format` on Windows
+* text=auto eol=lf
+transcoding.wasm filter=lfs diff=lfs merge=lfs -text
+*.wasm filter=lfs diff=lfs merge=lfs -text

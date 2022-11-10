@@ -1,0 +1,65 @@
+syntax="proto3";
+
+package main;
+
+option go_package = "./proto";
+
+enum ValueType {
+	I32 = 0;
+	I64 = 1;
+	F32 = 2;
+	F64 = 3;
+	V128 = 4;
+	FuncRef = 5;
+	ExternRef = 6;
+}
+
+service Executor {
+	rpc Execute(ExecuteRequest) returns (ExecuteResponse) {}
+	rpc Finish (Empty) returns (Empty) {}
+}
+
+message Empty {}
+
+message ExecuteRequest {
+	Snapshot snapshot = 1;
+}
+
+message ExecuteResponse {
+	bool ok = 1;
+}
+
+message Global {
+	ValueType type = 1;
+	bool mutable = 2;
+    uint64 value = 3;
+	uint64 valHi = 4;
+}
+
+message Frame {
+	uint64 pc = 1;
+	uint32 functionIndex = 2;
+}
+
+message Memory {
+	bytes buffer = 1;
+	uint32 min = 2;
+	uint32 cap = 3;
+	uint32 max = 4;
+}
+
+message FileEntry {
+    string path = 1;
+    bool isDir = 2;
+    int64 offset = 3;
+}
+
+message Snapshot {
+    bool valid = 1;
+	repeated uint64 stack = 2;
+	repeated Global globals = 3;
+	repeated Frame frames = 4;
+	Memory memory = 5;
+    uint32 lastFd = 6;
+    map<uint32, FileEntry> openedFiles = 7;
+}
