@@ -6,7 +6,14 @@ extension.
 
 This runtime is based on wazero, a WebAssembly Core Specification 1.0 and 2.0 compliant runtime written in Go.
 
-## Example
+This video presents the FFmpeg experiment. Two Docker containers were set up,
+and the video transcoding is migrated every 10 seconds between the two
+containers. The logs for the Docker containers can be seen with the
+prefix `host-1` and `host-2`.
+
+https://user-images.githubusercontent.com/5797176/201670697-8ed04765-094a-4310-8568-459d61cd3da3.mp4
+
+## Running Examples
 
 The snapshotting example can be found in [examples/snapshot](examples/snapshot/).
 
